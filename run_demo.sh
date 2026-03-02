@@ -5,10 +5,10 @@ set -o pipefail
 
 # ===== Parameters Settings =====
 bin_path="./build/examples/demo"                
-method="PQ(4,6,16)"                    # PQ(nc,nb,ns): nc-> number of clusters, number of bits per subspace, number of subspaces
-search_topn=2   
-nprobe=24
-nlists=1024
+method="PQ(4,6,16)"                    # PQ(nc,nb,ns): nc-> P1 (number of partitions), number of bits per subspace, number of subspaces
+search_topn=2                           # probe partitions
+nprobe=24                               # probe local lists (apply adaptive probing by default)
+nlists=1024                             # P2 in the paper, number of local lists
 name="siftsmall"                       # name of the dataset, used in metric files
 topk=100                            # topk retrieval
 refine=200       # Support up to 400 now, will extend in future
