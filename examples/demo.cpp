@@ -20,18 +20,6 @@
 #include "utils/IO.hpp"
 #include "utils/MetricLogger.hpp"
 
-double getMemoryUsageMB() {
-    std::ifstream status_file("/proc/self/status");
-    std::string line;
-    while (std::getline(status_file, line)) {
-        if (line.rfind("VmHWM:", 0) == 0) {
-            std::size_t kb = std::stoul(line.substr(line.find_last_of('\t')));
-            return kb / 1024.0;  // 转 MB
-        }
-    }
-    return 0.0;
-}
-
 int main(int argc, char **argv) {
   std::vector<ArgsParse::opt> long_options {
     {"dataset", 's', ""},
@@ -115,7 +103,6 @@ int main(int argc, char **argv) {
       imbalance = pq.load(args["save"]);
     }
 
-    // encoding phase
     START_TIMING(PQ_TRAINING);
     auto trainStart = std::chrono::steady_clock::now();
     if (args["save"] == "" || !isFileExists(args["save"])) {
@@ -128,9 +115,7 @@ int main(int argc, char **argv) {
     trainTime = elapsed_seconds.count();
     END_TIMING(PQ_TRAINING, "== Training time: ");
 
-    // if(refines.empty()){
-    //   dataset.resize(0, 0);
-    // }
+
     if (args["save"] != "" && !isFileExists(args["save"])) {
       std::cout << "Saving centroids to " << args["save"] << std::endl;
       pq.save(args["save"]);
@@ -187,10 +172,7 @@ int main(int argc, char **argv) {
         float upSampleRate = std::stof(args["up-sample"]);
         answers.distances.clear();
         answers.labels.clear();
-        
-        // if(i != 0) {
-        //   sleep(2);
-        // }
+
         auto start = std::chrono::high_resolution_clock::now();
         if(args.at<int>("quant-bits") == 4){
           answers = pq.search<float>(queries, dataset, searchK, args.at<int>("search-topn"), simd, upSampleRate, true, &dataset, refine, args.at<int>("nprobe"), args.at<int>("search_thread")); 
@@ -212,36 +194,20 @@ int main(int argc, char **argv) {
     if (args["groundtruth"] != "") {
       // measure accuracy
       MetricLogger logger(args["metric-log"]);
-      //logger.addLog("Recall@All", getAvgRecall(answers.labels, topnn, args.at<int>("k"), bool(args.at<int>("r-at-r"))));
-
-      double epsilon=1e-1;
-      // std::cout << "\tε(" << epsilon << ")-recall@" << args.at<int>("k") << ": " << 
-      //   getEpsilonRecallAtR(answers.distances, topnn, queries, dataset, args.at<int>("k"), args.at<int>("k"), epsilon) << std::endl;
-      // std::cout << "\tmAP@" << args.at<int>("k") << ": " << getMeanAveragePrecision(answers.labels, topnn, args.at<int>("k")) << std::endl;
-      //std::cout << "\tmAP(old): " << getMeanAveragePrecisionOld(answers.labels, topnn, args.at<int>("k")) << std::endl;
 
       std::cout << "\trecallk@k" << args.at<int>("k") <<": " << getRecallAtR(answers.labels, topnn, args.at<int>("k"), args.at<int>("k"), bool(args.at<int>("r-at-r"))) << std::endl;
       logger.addLog(std::string("Recallk@k"), getRecallAtR(answers.labels, topnn, args.at<int>("k"), args.at<int>("k"), bool(args.at<int>("r-at-r"))));
       logger.addLog("k", args.at<int>("k"));
-      // for(int r : rList) {
-      //     std::cout << "\tmAP@" << r <<": " << getMeanAveragePrecisionAtR(answers.labels, topnn, args.at<int>("k"), r) << std::endl;
-      // }
 
       logger.addLog("Latency", queryTime);
       logger.addLog("Throughput(Q/sec)", queries.rows()/queryTime);
-      logger.addLog("MemMB", getMemoryUsageMB());
-      // logger.addLog("MemGB", getMemoryUsageMB());
       logger.addLog("TrainSec", trainTime);
-      logger.addLog("Simd", args.at<int>("simd"));
       logger.addLog("Dataset", args["config-id"]);
-      // logger.addLog("PQ", args["method"]);
       logger.addLog("NumCentroids", pq.mCentroidsNum);
       logger.addLog("NumSubspaces", pq.mSubspaceNum);
       logger.addLog("NumClusters", pq.mClustersNum);
       logger.addLog("Refine", args.at<int>("refine"));
       logger.addLog("TopNClusters", args.at<int>("search-topn"));
-      logger.addLog("UpSample", std::stof(args["up-sample"])*args.at<int>("k"));
-      logger.addLog("Imbalance", imbalance);
       logger.addLog("NLists", args.at<int>("nlist"));
       logger.addLog("NProbe", args.at<int>("nprobe"));
       logger.addLog("SearchThreads", args.at<int>("search_thread"));

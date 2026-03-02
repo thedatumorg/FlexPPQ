@@ -28,8 +28,9 @@ make -j8 # For parallel compiling
 ```
 
 # Run
-Please check run_demo.sh for detailed parameters introduction and settings.
+Please check run_demo.sh for detailed parameters introduction and settings.  
 ```
 cd .. # Return back to the main dir
 bash run_demo.sh
 ```
+Then you can check results at metric/*.

@@ -17,7 +17,7 @@ search_thread=1
 trial=1                          # run query trial times, each trial run repeat times. Use faster latency in each trial, and average across all trials
 repeat=1                            
 metric_file="metric/${name}_${method}.csv" # will record all running metrics
-metric_head="Dataset,Imbalance,NumCentroids,NumSubspaces,NumClusters,TopNClusters,NLists,NProbe,SearchThreads,UpSample,Refine,Simd,QuantBit,Throughput(Q/sec),Latency,MemMB,TrainSec,Recallk@k,k"
+metric_head="Dataset,NumCentroids,NumSubspaces,NumClusters,TopNClusters,NLists,NProbe,SearchThreads,Refine,QuantBit,Throughput(Q/sec),Latency,TrainSec,Recallk@k,k"
 
 dataset_dir="dataset"
 if [ -z "$dataset_dir" ]; then
