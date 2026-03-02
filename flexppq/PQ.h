@@ -473,8 +473,8 @@ private:
   void searchHeapSIMD128Centroids(
     ColMatrix<TargetDType>& lut, const int k, int q_idx,
     TopKHeap& res, ColMatrix<uint8_t> &curCodes, std::vector<int>& idmap);
-  template<int numSubspaceNum>
-  void searchHeapSIMDFloat(ColMatrix<float> &lut, const int k, int q_idx, TopKHeap &res);
+  // template<int numSubspaceNum>
+  // void searchHeapSIMDFloat(ColMatrix<float> &lut, const int k, int q_idx, TopKHeap &res);
 
   
   template<int numSubspaceNum>
@@ -652,69 +652,69 @@ inline void print_vector(std::vector<int> data, const bool b1=true) {
 }
 
 
-// TODO load heap max into the register
-template <int numSubspaceNum>
-void PQ::searchHeapSIMDFloat(ColMatrix<float>& lut, const int k, int q_idx,
-                        TopKHeap& res) {
+// // TODO load heap max into the register
+// template <int numSubspaceNum>
+// void PQ::searchHeapSIMDFloat(ColMatrix<float>& lut, const int k, int q_idx,
+//                         TopKHeap& res) {
 
 
-    const int ksub = lut.rows();       // 子空间距离表的行数
+//     const int ksub = lut.rows();       // 子空间距离表的行数
 
-    // Step 1: 预加载所有子空间的 LUT 数据到寄存器
-    __m256 lut_registers[16]; // 最多支持 16 个子空间
-    for (int col = 0; col < numSubspaceNum; ++col) {
-        // 直接加载 256 位的 8 个 float 数据
-        lut_registers[col] = _mm256_loadu_ps(reinterpret_cast<const float*>(lut.data() + col * ksub));
-    }
+//     // Step 1: 预加载所有子空间的 LUT 数据到寄存器
+//     __m256 lut_registers[16]; // 最多支持 16 个子空间
+//     for (int col = 0; col < numSubspaceNum; ++col) {
+//         // 直接加载 256 位的 8 个 float 数据
+//         lut_registers[col] = _mm256_loadu_ps(reinterpret_cast<const float*>(lut.data() + col * ksub));
+//     }
 
-    // mSmallCodebook is col-major
-    uint8_t* codes = mSmallCodebook.data();
+//     // mSmallCodebook is col-major
+//     uint8_t* codes = mSmallCodebook.data();
 
-    // Step 2: 遍历 Codebook 进行搜索
-    int stepSize;
-    const int codebookRow = mSmallCodebook.rows();
+//     // Step 2: 遍历 Codebook 进行搜索
+//     int stepSize;
+//     const int codebookRow = mSmallCodebook.rows();
 
-    __m256 heap_top;
-    // whether there is a new dist less than heap_top
-    int cmp_mask = 0;
-    stepSize = 8;
-    heap_top = _mm256_set1_ps(std::numeric_limits<float>::max());
+//     __m256i heap_top;
+//     // whether there is a new dist less than heap_top
+//     int cmp_mask = 0;
+//     stepSize = 8;
+//     heap_top = _mm256_set1_ps(std::numeric_limits<float>::max());
 
 
-    for (int i = 0; i < codebookRow; i += stepSize) {
+//     for (int i = 0; i < codebookRow; i += stepSize) {
 
-        __m256 acc = _mm256_setzero_ps(); // 初始化累积距离寄存器
+//         __m256 acc = _mm256_setzero_ps(); // 初始化累积距离寄存器
 
-        for (int col = 0; col < numSubspaceNum; ++col) {
-          __m128i indices_8 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(codes + codebookRow*col));
-          __m256i indices_32 = _mm256_cvtepu8_epi32(indices_8);
-          __m256 dist_vector = _mm256_permutevar8x32_ps(lut_registers[col], indices_32);
-          acc = _mm256_add_ps(acc, dist_vector);
-        }
+//         for (int col = 0; col < numSubspaceNum; ++col) {
+//           __m128i indices_8 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(codes + codebookRow*col));
+//           __m256i indices_32 = _mm256_cvtepu8_epi32(indices_8);
+//           __m256 dist_vector = _mm256_permutevar8x32_ps(lut_registers[col], indices_32);
+//           acc = _mm256_add_ps(acc, dist_vector);
+//         }
 
-        codes += stepSize;
-        __m256 cmp_result;
-        cmp_result = _mm256_cmp_ps(acc, heap_top, _CMP_LT_OQ);
-        cmp_mask = _mm256_movemask_ps(cmp_result);
+//         codes += stepSize;
+//         __m256 cmp_result;
+//         cmp_result = _mm256_cmp_ps(acc, heap_top, _CMP_LT_OQ);
+//         cmp_mask = _mm256_movemask_ps(cmp_result);
 
-        // Step 4: 比较并更新堆
-        if(cmp_mask){
-          alignas(32) float temp[8];
-          _mm256_store_ps(temp, acc);
-          for (int j = 0; j < stepSize; ++j) {
-              uint8_t dist = temp[j];
-              if (dist < res.worst()) { 
-                  res.push(dist, ID{idBias,  i + j});
-              }
-          }
+//         // Step 4: 比较并更新堆
+//         if(cmp_mask){
+//           alignas(32) float temp[8];
+//           _mm256_store_ps(temp, acc);
+//           for (int j = 0; j < stepSize; ++j) {
+//               uint8_t dist = temp[j];
+//               if (dist < res.worst()) { 
+//                   res.push(dist, ID{idBias,  i + j});
+//               }
+//           }
 
-          heap_top = _mm256_set1_epi8(res.worst());
+//           heap_top = _mm256_set1_epi8(res.worst());
           
-        }
-    }
+//         }
+//     }
 
-    //f::heap_reorder<f::CMax<float, int>>(k, heap_dis, heap_ids);
-}
+//     //f::heap_reorder<f::CMax<float, int>>(k, heap_dis, heap_ids);
+// }
 
 // shuffle: https://www.intel.com/content/www/us/en/docs/cpp-compiler/developer-guide-reference/2021-8/mm256-shuffle-epi8.html
 // a shuffle can look up 32 indices once, each index must be ranged [0x00~0x0F]

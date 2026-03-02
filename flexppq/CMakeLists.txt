@@ -6,6 +6,8 @@ add_library(
   PartitionedPQ.cpp
 )
 
+target_link_libraries(PQ PUBLIC TBB::tbb)
+
 target_include_directories(PQ PUBLIC
   ${PROJECT_SOURCE_DIR}/flexppq
   ${PROJECT_SOURCE_DIR}/external/eigen

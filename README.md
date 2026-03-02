@@ -7,15 +7,16 @@
 # Pre-Build
 1. Download [Eigen](https://gitlab.com/libeigen/eigen/-/releases/3.4.0) at external, unzip and rename it as eigen.
 ```
+mkdir external
 cd external
 wget https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.zip
 unzip eigen-3.4.0.zip
 mv eigen-3.4.0 eigen
 ```
-2. Install Blas and Lapacke
+2. Install Blas, Lapacke, amd necessary libs
 ```
 sudo apt install -y libblas-dev liblapack-dev liblapacke-dev
-sudo apt install -y libnuma-dev libarmadillo-dev numactl 
+sudo apt install -y libnuma-dev libarmadillo-dev numactl libtbb-dev
 ```
 
 # Build

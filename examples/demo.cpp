@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
     {"groundtruth", 's', ""},
     {"groundtruth-format", 's', "ascii"},
     {"result", 's', ""},
-    {"timeseries-size", 'i', "1"}, // dim of each data vector
+    {"dim", 'i', "1"}, // dim of each data vector
     {"dataset-size", 'i', "0"},
     {"queries-size", 'i', "0"},
     {"gt-dim", 'i', "100"},
@@ -80,25 +80,25 @@ int main(int argc, char **argv) {
 
   
   int dimPadding = 0;
-  if (args.at<int>("timeseries-size") % pq.mSubspaceNum != 0) {
+  if (args.at<int>("dim") % pq.mSubspaceNum != 0) {
     std::cout << "padding cols, because the col of dataset can NOT be divisible by #subspace" << std::endl;
-    int subvectorlen = args.at<int>("timeseries-size") / pq.mSubspaceNum;
-    subvectorlen += (args.at<int>("timeseries-size") % pq.mSubspaceNum > 0) ? 1 : 0;
-    dimPadding = (subvectorlen * pq.mSubspaceNum) - args.at<int>("timeseries-size");
+    int subvectorlen = args.at<int>("dim") / pq.mSubspaceNum;
+    subvectorlen += (args.at<int>("dim") % pq.mSubspaceNum > 0) ? 1 : 0;
+    dimPadding = (subvectorlen * pq.mSubspaceNum) - args.at<int>("dim");
   }
   RowMatrixXf dataset; 
 
   auto readDataset = [&args, &dataset, &dimPadding](){
     std::cout << "Read dataset" << std::endl;
-    dataset = RowMatrixXf::Zero(args.at<int>("dataset-size"), args.at<int>("timeseries-size") + dimPadding);
+    dataset = RowMatrixXf::Zero(args.at<int>("dataset-size"), args.at<int>("dim") + dimPadding);
     if (args["file-format-ori"] == "ascii") {
-      readOriginalFromExternal<true>(args["dataset"], dataset, args.at<int>("timeseries-size"), ',');
+      readOriginalFromExternal<true>(args["dataset"], dataset, args.at<int>("dim"), ',');
     } else if (args["file-format-ori"] == "fvecs") {
-      readFVecsFromExternal(args["dataset"], dataset, args.at<int>("timeseries-size"), args.at<int>("dataset-size"));
+      readFVecsFromExternal(args["dataset"], dataset, args.at<int>("dim"), args.at<int>("dataset-size"));
     } else if (args["file-format-ori"] == "bvecs") {
-      readBVecsFromExternal(args["dataset"], dataset, args.at<int>("timeseries-size"), args.at<int>("dataset-size"));
+      readBVecsFromExternal(args["dataset"], dataset, args.at<int>("dim"), args.at<int>("dataset-size"));
     } else if (args["file-format-ori"] == "bin") {
-      readFromExternalBin(args["dataset"], dataset, args.at<int>("timeseries-size"), args.at<int>("dataset-size"));
+      readFromExternalBin(args["dataset"], dataset, args.at<int>("dim"), args.at<int>("dataset-size"));
     }
     if(dataset.rows() != args.at<int>("dataset-size")) {
       printf("dataset size mismatch! readding %d, but param is %d\n", dataset.rows(), args.at<int>("dataset-size"));
@@ -139,17 +139,17 @@ int main(int argc, char **argv) {
 
 
   {
-    RowMatrixXf queries = RowMatrixXf::Zero(args.at<int>("queries-size"), args.at<int>("timeseries-size") + dimPadding);
+    RowMatrixXf queries = RowMatrixXf::Zero(args.at<int>("queries-size"), args.at<int>("dim") + dimPadding);
 
     std::cout << "Read queries" << pq.clusters.size() << std::endl;
     if (args["file-format-ori"] == "ascii") {
-      readOriginalFromExternal<true>(args["queries"], queries, args.at<int>("timeseries-size"), ',');
+      readOriginalFromExternal<true>(args["queries"], queries, args.at<int>("dim"), ',');
     } else if (args["file-format-ori"] == "fvecs") {
-      readFVecsFromExternal(args["queries"], queries, args.at<int>("timeseries-size"), args.at<int>("queries-size"));
+      readFVecsFromExternal(args["queries"], queries, args.at<int>("dim"), args.at<int>("queries-size"));
     } else if (args["file-format-ori"] == "bvecs") {
-      readBVecsFromExternal(args["queries"], queries, args.at<int>("timeseries-size"), args.at<int>("queries-size"));
+      readBVecsFromExternal(args["queries"], queries, args.at<int>("dim"), args.at<int>("queries-size"));
     } else if (args["file-format-ori"] == "bin") {
-      readFromExternalBin(args["queries"], queries, args.at<int>("timeseries-size"), args.at<int>("queries-size"));
+      readFromExternalBin(args["queries"], queries, args.at<int>("dim"), args.at<int>("queries-size"));
     }
 
     std::vector<std::vector<int>> topnn;
@@ -212,24 +212,17 @@ int main(int argc, char **argv) {
     if (args["groundtruth"] != "") {
       // measure accuracy
       MetricLogger logger(args["metric-log"]);
-      logger.addLog("Recall@All", getAvgRecall(answers.labels, topnn, args.at<int>("k"), bool(args.at<int>("r-at-r"))));
+      //logger.addLog("Recall@All", getAvgRecall(answers.labels, topnn, args.at<int>("k"), bool(args.at<int>("r-at-r"))));
 
-      std::cout << "\trecall@" << args.at<int>("k") << ": " << getAvgRecall(answers.labels, topnn, args.at<int>("k"), bool(args.at<int>("r-at-r"))) << std::endl;
       double epsilon=1e-1;
       // std::cout << "\tε(" << epsilon << ")-recall@" << args.at<int>("k") << ": " << 
       //   getEpsilonRecallAtR(answers.distances, topnn, queries, dataset, args.at<int>("k"), args.at<int>("k"), epsilon) << std::endl;
       // std::cout << "\tmAP@" << args.at<int>("k") << ": " << getMeanAveragePrecision(answers.labels, topnn, args.at<int>("k")) << std::endl;
       //std::cout << "\tmAP(old): " << getMeanAveragePrecisionOld(answers.labels, topnn, args.at<int>("k")) << std::endl;
 
-      std::vector<int> rList = {1, 2, 5, 10, 20, 50, 100};
-
-      for(int r : rList) {
-          if(r > args.at<int>("k")) {
-            break;
-          }
-          std::cout << "\trecall@" << r <<": " << getRecallAtR(answers.labels, topnn, args.at<int>("k"), r, bool(args.at<int>("r-at-r"))) << std::endl;
-          logger.addLog(std::string("Recall@") + std::to_string(r), getRecallAtR(answers.labels, topnn, args.at<int>("k"), r, bool(args.at<int>("r-at-r"))));
-      }
+      std::cout << "\trecallk@k" << args.at<int>("k") <<": " << getRecallAtR(answers.labels, topnn, args.at<int>("k"), args.at<int>("k"), bool(args.at<int>("r-at-r"))) << std::endl;
+      logger.addLog(std::string("Recallk@k"), getRecallAtR(answers.labels, topnn, args.at<int>("k"), args.at<int>("k"), bool(args.at<int>("r-at-r"))));
+      logger.addLog("k", args.at<int>("k"));
       // for(int r : rList) {
       //     std::cout << "\tmAP@" << r <<": " << getMeanAveragePrecisionAtR(answers.labels, topnn, args.at<int>("k"), r) << std::endl;
       // }

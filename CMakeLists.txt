@@ -27,6 +27,8 @@ else()
     message(FATAL_ERROR "LAPACK library not found!")
 endif()
 
+find_package(TBB REQUIRED)
+
 link_directories(external/lapack)
 
 add_subdirectory(external/eigen)

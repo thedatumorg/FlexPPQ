@@ -5,18 +5,19 @@ set -o pipefail
 
 # ===== Parameters Settings =====
 bin_path="./build/examples/demo"                
-method="PQ(8,6,10)"                    # PQ(nc,nb,ns): nc-> number of clusters, number of bits per subspace, number of subspaces
+method="PQ(4,6,16)"                    # PQ(nc,nb,ns): nc-> number of clusters, number of bits per subspace, number of subspaces
+search_topn=2   
+nprobe=24
+nlists=1024
 name="siftsmall"                       # name of the dataset, used in metric files
 topk=100                            # topk retrieval
-refine=200
-search_topn=5                    # number of clusters to probe, must less or equal than number of clusters
-nprobe=4
-nlists=512
+refine=200       # Support up to 400 now, will extend in future
+                 # number of clusters to probe, must less or equal than number of clusters
 search_thread=1
 trial=1                          # run query trial times, each trial run repeat times. Use faster latency in each trial, and average across all trials
 repeat=1                            
 metric_file="metric/${name}_${method}.csv" # will record all running metrics
-metric_head="Dataset,NumCentroids,NumSubspaces,NumClusters,TopNClusters,Throughput(Q/sec),Latency,Recall@k"
+metric_head="Dataset,Imbalance,NumCentroids,NumSubspaces,NumClusters,TopNClusters,NLists,NProbe,SearchThreads,UpSample,Refine,Simd,QuantBit,Throughput(Q/sec),Latency,MemMB,TrainSec,Recallk@k,k"
 
 dataset_dir="dataset"
 if [ -z "$dataset_dir" ]; then
@@ -59,7 +60,7 @@ ${bin_path} \
     --method "${method}" \
     --k "${topk}" \
     --refine "${refine}" \
-    --save "${encoded_dir}/${name}_${method}.bin" \
+    --save "${encoded_dir}/${name}_${method}_${nlists}.bin" \
     --search-topn "${search_topn}" \
     --config-id "${name}" \
     --trial "${trial}" \
@@ -68,9 +69,9 @@ ${bin_path} \
     --r-at-r "1" \
     --centroid_distribution "0" \
     --alpha "1.0" \
-    --nprobe "${NPROBE}" \
-    --nlist "${NLISTS}" \
-    --search_thread "${SEARCH_THREAD}" \
+    --nprobe "${nprobe}" \
+    --nlist "${nlists}" \
+    --search_thread "${search_thread}" \
     --up-sample "1"
 
 
