@@ -10,18 +10,6 @@
 
 #include "../Types.hpp"
 
-// using LUTType = ColMatrix<float>;
-// Ref: PQFS
-/*
-__m256i vdiff = _mm256_subs_epu8(va, vb);   // 无符号饱和减法
-__m256i vcmp = _mm256_cmpeq_epi8(vdiff, _mm256_setzero_si256()); // a < b
-We can use this to compare uint8_t in SIMD
-*/
-
-// TODO: we find the max distance from keep% data to get qmax. Maybe we could avoid re-scaning those data
-
-// #define DATA_QUANTIZER_DEBUG
-// #define DISTABLE_NORMALIZATION
 
 
 class DataQuantizer {
@@ -32,7 +20,7 @@ class DataQuantizer {
         int rows = data.rows();
         std::vector<float> medians(cols);
 
-        std::vector<float> buffer(rows);  // 可重用的拷贝 buffer
+        std::vector<float> buffer(rows); 
 
         for (int col = 0; col < cols; ++col) {
             std::copy(data.col(col).data(),  data.col(col).data() + rows, buffer.begin());
@@ -44,13 +32,7 @@ class DataQuantizer {
         return medians;
     }
 
-    /**
-     * @brief 对输入矩阵进行中心化，并在低方差情况下进行放缩，使列方差均值接近 100。
-     * 
-     * @tparam TargetDType 实数类型，如 float、double
-     * @param data_in 输入矩阵（N × D），每列为一个特征
-     * @return ColMatrix<TargetDType> 处理后的矩阵
-     */
+
     template<typename LUTDType>
     ColMatrix<LUTDType> normalizeAndScale(const ColMatrix<LUTDType>& data_in, const int numSubspaces) {
         #ifdef DISTABLE_NORMALIZATION
@@ -69,25 +51,7 @@ class DataQuantizer {
         printMatrix(data_in, "Before Normalize Original LUT");
         #endif
 
-        ColMatrix<LUTDType> data = data_in;  // 复制输入矩阵
-
-        // 1. 每列减去自己的均值（中心化）
-        // data.rowwise() -= min.transpose();
-
-        // 2. 计算每列方差
-        // Eigen::Matrix<LUTDType, Eigen::Dynamic, 1> var(D);
-        // for (int j = 0; j < D; ++j) {
-        //     var(j) = data.col(j).array().square().sum() / static_cast<LUTDType>(N);
-        // }
-        // LUTDType var_mean = var.mean();
-
-        // 3. 若均值方差 < 100，则整体缩放数据
-        // if (var_mean < static_cast<LUTDType>(100)) {
-        //     LUTDType scale = sqrt(static_cast<LUTDType>(100) / (var_mean * D));
-        //     data *= scale;
-        // }
-
-        // data = data.array().log1p();
+        ColMatrix<LUTDType> data = data_in;  
 
         Eigen::Matrix<LUTDType, Eigen::Dynamic, 1> min = data.colwise().minCoeff(); 
         // auto mediums = colwiseMedian(data);

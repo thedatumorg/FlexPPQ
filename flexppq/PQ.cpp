@@ -86,307 +86,6 @@ static inline int assignCoarse1(const float* x, const float* coarse, int nlist, 
 }
 
 
-// void PQ::trainIVF(RowMatrixXf &XTrain, const int nlist, bool verbose) {
-//   this->mIVF.mIVFLists = nlist;
-
-//   const int N   = static_cast<int>(XTrain.rows());
-//   const int dim = static_cast<int>(XTrain.cols());
-
-//   if (mCentroidsNum > N) {
-//     std::cout << "#Centroids <= #Sample, impossible for KMeans. "
-//               << mCentroidsNum << " should <= " << N << "\n";
-//     assert(false);
-//   }
-//   if (mIVF.mIVFLists <= 0) {
-//     std::cout << "Invalid mIVFLists: " << mIVF.mIVFLists << " (N=" << N << ")\n";
-//     assert(false);
-//   }
-
-//   if(N / mIVF.mIVFLists <= 64) {
-//     mIVF.mIVFLists = std::max(1, N / 64);
-//   }
-
-//   codebookRow = N;
-
-//   // ------------------------------------------------------------
-//   // 0) Assume XTrain is already padded so that dim is divisible by M
-//   // ------------------------------------------------------------
-//   if (dim % mSubspaceNum != 0) {
-//     std::cout << "[trainIVF] ERROR: XTrain.cols()=" << dim
-//               << " is not divisible by mSubspaceNum=" << mSubspaceNum
-//               << ". If you said you padded, please pad to (M * subsLen).\n";
-//     assert(false);
-//   }
-//   mSubsLen = dim / mSubspaceNum;
-
-//   // A small helper: make a random permutation [0..N-1]
-//   auto makePerm = [&](int n) {
-//     std::vector<int> perm(n);
-//     for (int i = 0; i < n; ++i) perm[i] = i;
-//     // you likely already have randomPermutation(perm); use yours if you want
-//     std::mt19937 rng(12345); // or use your RNG
-//     std::shuffle(perm.begin(), perm.end(), rng);
-//     return perm;
-//   };
-
-//   // ------------------------------------------------------------
-//   // (A) Train IVF coarse centroids (global)
-//   //   - data is (dim x N), each column is one sample vector
-//   // ------------------------------------------------------------
-//   if (mIVF.nlist == 0 || mIVF.coarseCentroids.rows() == 0) {
-//     mIVF.nlist = mIVF.mIVFLists;
-//     mIVF.coarseCentroids.resize(mIVF.mIVFLists, dim);
-
-//     if (verbose) {
-//       std::cout << "[IVF] coarse kmeans: nlist=" << mIVF.mIVFLists
-//                 << " dim=" << dim << " N=" << N << "\n";
-//     }
-
-//     // Build arma data: dim x N, col i = XTrain.row(i)^T
-//     arma::fmat data(dim, N);
-//     for (int i = 0; i < N; ++i) {
-//       const float* src = XTrain.row(i).data(); // contiguous (RowMajor row)
-//       float* dst = data.colptr(i);
-//       // copy dim floats
-//       std::memcpy(dst, src, sizeof(float) * dim);
-//     }
-
-//     // arma means: dim x nlist (each column is a centroid)
-//     arma::fmat means(dim, mIVF.mIVFLists);
-
-//     omp_set_num_threads(64);
-//     bool ok = arma::kmeans(means, data, mIVF.mIVFLists, arma::static_subset, 50, false);
-//     if (!ok) {
-//       std::cout << "coarse kmeans arma failed\n";
-//       assert(false);
-//     }
-
-//     // Copy back to Eigen: mIVF.coarseCentroids is (nlist x dim), row c = centroid c
-//     for (int c = 0; c < mIVF.mIVFLists; ++c) {
-//       const float* src = means.colptr(c); // length dim
-//       float* dst = mIVF.coarseCentroids.row(c).data();
-//       std::memcpy(dst, src, sizeof(float) * dim);
-//     }
-//   }
-
-//   // init lists (filled later in add())
-//   mIVF.lists.clear();
-//   mIVF.lists.resize(mIVF.nlist);
-
-//   // ------------------------------------------------------------
-//   // (B) Train global PQ codebook (shared by all lists)
-//   //   For each subspace s:
-//   //     - data is (mSubsLen x sampleSize), each col is one sample sub-vector
-//   //     - means is (mSubsLen x K)
-//   // ------------------------------------------------------------
-//   if (mCentroidsPerSubs.empty()) {
-//     mCentroidsPerSubs.resize(mSubspaceNum);
-
-//     for (int s = 0; s < mSubspaceNum; ++s) {
-//       const int sampleSize = std::min(N, int(1e7)); // consider reducing if memory heavy
-//       const int startCol = s * mSubsLen;
-
-//       if (verbose) {
-//         std::cout << "[PQ] subspace " << s
-//                   << " kmeans (sampleSize=" << sampleSize
-//                   << ", dsub=" << mSubsLen << ")\n";
-//       }
-
-//       // pick sample indices
-//       std::vector<int> perm = makePerm(N);
-
-//       // Build arma data: dsub x sampleSize
-//       arma::fmat data(mSubsLen, sampleSize);
-//       for (int i = 0; i < sampleSize; ++i) {
-//         const int rid = perm[i];
-//         const float* src = XTrain.row(rid).data() + startCol; // subvector start
-//         float* dst = data.colptr(i);
-//         std::memcpy(dst, src, sizeof(float) * mSubsLen);
-//       }
-
-//       // arma means: dsub x K
-//       arma::fmat means(mSubsLen, mCentroidsNum);
-
-//       omp_set_num_threads(64);
-//       bool ok = arma::kmeans(means, data, mCentroidsNum, arma::static_subset, 50, false);
-//       if (!ok) {
-//         std::cout << "pq kmeans arma failed\n";
-//         assert(false);
-//       }
-
-//       // Copy back to Eigen: want (K x dsub), row k = centroid k
-//       mCentroidsPerSubs[s].resize(mCentroidsNum, mSubsLen);
-//       for (int k = 0; k < mCentroidsNum; ++k) {
-//         const float* src = means.colptr(k); // length dsub
-//         float* dst = mCentroidsPerSubs[s].row(k).data();
-//         std::memcpy(dst, src, sizeof(float) * mSubsLen);
-//       }
-//     }
-//   }
-
-//   mIVF.coarseNorm2 = mIVF.coarseCentroids.rowwise().squaredNorm();
-
-// }
-
-
-// void PQ::trainIVF(RowMatrixXf &XTrain, const int nlist, bool verbose) {
-//   this->mIVF.mIVFLists = nlist;
-
-//   const int N   = static_cast<int>(XTrain.rows());
-//   const int dim = static_cast<int>(XTrain.cols());
-//   omp_set_num_threads(64);
-
-//   if (mCentroidsNum > N) {
-//     std::cout << "#Centroids <= #Sample, impossible for KMeans. "
-//               << mCentroidsNum << " should <= " << N << "\n";
-//     assert(false);
-//   }
-//   if (mIVF.mIVFLists <= 0) {
-//     std::cout << "Invalid mIVFLists: " << mIVF.mIVFLists << " (N=" << N << ")\n";
-//     assert(false);
-//   }
-
-//   if(N / mIVF.mIVFLists <= 64) {
-//     mIVF.mIVFLists = std::max(1, N / 64);
-//   }
-
-//   codebookRow = N;
-
-//   // ------------------------------------------------------------
-//   // 0) Assume XTrain is already padded so that dim is divisible by M
-//   // ------------------------------------------------------------
-//   if (dim % mSubspaceNum != 0) {
-//     std::cout << "[trainIVF] ERROR: XTrain.cols()=" << dim
-//               << " is not divisible by mSubspaceNum=" << mSubspaceNum
-//               << ". If you said you padded, please pad to (M * subsLen).\n";
-//     assert(false);
-//   }
-//   mSubsLen = dim / mSubspaceNum;
-
-//   // A small helper: make a random permutation [0..N-1]
-//   auto makePerm = [&](int n) {
-//     std::vector<int> perm(n);
-//     for (int i = 0; i < n; ++i) perm[i] = i;
-//     // you likely already have randomPermutation(perm); use yours if you want
-//     std::mt19937 rng(12345); // or use your RNG
-//     std::shuffle(perm.begin(), perm.end(), rng);
-//     return perm;
-//   };
-
-//   // ------------------------------------------------------------
-//   // (A) Train IVF coarse centroids (global)
-//   //   - data is (dim x N), each column is one sample vector
-//   // ------------------------------------------------------------
-//   if (mIVF.nlist == 0 || mIVF.coarseCentroids.rows() == 0) {
-//     mIVF.nlist = mIVF.mIVFLists;
-//     mIVF.coarseCentroids.resize(mIVF.mIVFLists, dim);
-
-//     if (verbose) {
-//       std::cout << "[IVF] coarse kmeans: nlist=" << mIVF.mIVFLists
-//                 << " dim=" << dim << " N=" << N << "\n";
-//     }
-
-//     // Build arma data: dim x N, col i = XTrain.row(i)^T
-//     arma::fmat data(dim, N);
-//     #pragma omp parallel for schedule(static)
-//     for (int i = 0; i < N; ++i) {
-//       const float* src = XTrain.row(i).data(); // contiguous (RowMajor row)
-//       float* dst = data.colptr(i);
-//       // copy dim floats
-//       std::memcpy(dst, src, sizeof(float) * dim);
-//     }
-
-//     // arma means: dim x nlist (each column is a centroid)
-//     arma::fmat means(dim, mIVF.mIVFLists);
-
-//     bool ok = arma::kmeans(means, data, mIVF.mIVFLists, arma::static_subset, 50, false);
-//     if (!ok) {
-//       std::cout << "coarse kmeans arma failed\n";
-//       assert(false);
-//     }
-
-//     puts("Finish kmeans");
-
-//     // Copy back to Eigen: mIVF.coarseCentroids is (nlist x dim), row c = centroid c
-//     #pragma omp parallel for schedule(static)
-//     for (int c = 0; c < mIVF.mIVFLists; ++c) {
-//       const float* src = means.colptr(c); // length dim
-//       float* dst = mIVF.coarseCentroids.row(c).data();
-//       std::memcpy(dst, src, sizeof(float) * dim);
-//     }
-
-//     puts("Finish writeback");
-
-//   }
-
-//   // init lists (filled later in add())
-//   mIVF.lists.clear();
-//   mIVF.lists.resize(mIVF.nlist);
-
-//   // ------------------------------------------------------------
-//   // (B) Train global PQ codebook (shared by all lists)
-//   //   For each subspace s:
-//   //     - data is (mSubsLen x sampleSize), each col is one sample sub-vector
-//   //     - means is (mSubsLen x K)
-//   // ------------------------------------------------------------
-//   if (mCentroidsPerSubs.empty()) {
-//     mCentroidsPerSubs.resize(mSubspaceNum);
-
-//     for (int s = 0; s < mSubspaceNum; ++s) {
-//       const int sampleSize = std::min(N, int(1e7)); // consider reducing if memory heavy
-//       const int startCol = s * mSubsLen;
-
-//       if (verbose) {
-//         std::cout << "[PQ] subspace " << s
-//                   << " kmeans (sampleSize=" << sampleSize
-//                   << ", dsub=" << mSubsLen << ")\n";
-//       }
-
-//       // pick sample indices
-//       std::vector<int> perm = makePerm(N);
-
-//       // Build arma data: dsub x sampleSize
-//       arma::fmat data(mSubsLen, sampleSize);
-
-//       if(sampleSize < N) {
-//         for (int i = 0; i < sampleSize; ++i) {
-//           const int rid = perm[i];
-//           const float* src = XTrain.row(rid).data() + startCol; // subvector start
-//           float* dst = data.colptr(i);
-//           std::memcpy(dst, src, sizeof(float) * mSubsLen);
-//         }
-//       } else {
-//         #pragma omp parallel for schedule(static)
-//         for (int i = 0; i < sampleSize; ++i) {
-//           const float* src = XTrain.row(i).data() + startCol;
-//           float* dst = data.colptr(i);
-//           std::memcpy(dst, src, sizeof(float) * mSubsLen);
-//         }
-//       }
-
-//       // arma means: dsub x K
-//       arma::fmat means(mSubsLen, mCentroidsNum);
-
-      
-//       bool ok = arma::kmeans(means, data, mCentroidsNum, arma::static_subset, 50, false);
-//       if (!ok) {
-//         std::cout << "pq kmeans arma failed\n";
-//         assert(false);
-//       }
-
-//       // Copy back to Eigen: want (K x dsub), row k = centroid k
-//       mCentroidsPerSubs[s].resize(mCentroidsNum, mSubsLen);
-//       for (int k = 0; k < mCentroidsNum; ++k) {
-//         const float* src = means.colptr(k); // length dsub
-//         float* dst = mCentroidsPerSubs[s].row(k).data();
-//         std::memcpy(dst, src, sizeof(float) * mSubsLen);
-//       }
-//     }
-//   }
-
-//   mIVF.coarseNorm2 = mIVF.coarseCentroids.rowwise().squaredNorm();
-
-// }
 
 void PQ::trainIVF(RowMatrixXf &XTrain, const int nlist, bool verbose) {
   this->mIVF.mIVFLists = nlist;
@@ -411,34 +110,18 @@ void PQ::trainIVF(RowMatrixXf &XTrain, const int nlist, bool verbose) {
   }
 
   codebookRow = N;
-
-  // ------------------------------------------------------------
-  // 0) dim 必须能被 mSubspaceNum 整除（你说已 padding）
-  // ------------------------------------------------------------
   if (dim % mSubspaceNum != 0) {
     std::cout << "[trainIVF] ERROR: XTrain.cols()=" << dim
               << " is not divisible by mSubspaceNum=" << mSubspaceNum << "\n";
     assert(false);
   }
   mSubsLen = dim / mSubspaceNum;
-
-  // ------------------------------------------------------------
-  // 1) Shared sample for BOTH IVF coarse and PQ training
-  //    - 不随机：直接取前 M 个向量
-  // ------------------------------------------------------------
-  // const int M = std::min(N, static_cast<int>(1e5)); // 你原先 PQ 的 sample 上限
   const int M = N;
   if (verbose) {
     std::cout << "[trainIVF] Shared sampleSize=" << M
               << " (take first " << M << " vectors)\n";
   }
 
-  // ------------------------------------------------------------
-  // 2) 一次性转置 sample：XtS = dim x M (ColMajor), 每列一个样本
-  //    之后：
-  //    - coarse kmeans: zero-copy 喂给 arma
-  //    - PQ: 从 XtS 每列抽取 subspace 段进行 pack
-  // ------------------------------------------------------------
   Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor> XtS =
       XTrain.topRows(M).transpose().eval();  // dim x M
 
@@ -454,7 +137,6 @@ void PQ::trainIVF(RowMatrixXf &XTrain, const int nlist, bool verbose) {
                 << " dim=" << dim << " M=" << M << "\n";
     }
 
-    // zero-copy: XtS 是 col-major 且列=样本，完全匹配 arma::kmeans 输入期望
     arma::fmat data(XtS.data(), dim, M, /*copy_aux_mem=*/false, /*strict=*/true);
 
     arma::fmat means(dim, mIVF.mIVFLists);
@@ -479,16 +161,6 @@ void PQ::trainIVF(RowMatrixXf &XTrain, const int nlist, bool verbose) {
   // init lists (filled later in add())
   mIVF.lists.clear();
   mIVF.lists.resize(mIVF.nlist);
-
-  // ------------------------------------------------------------
-  // (B) Train global PQ codebook (shared by all lists)
-  //     For each subspace s:
-  //       - pack data_s : (mSubsLen x M)  (列=样本)
-  //       - kmeans => means_s : (mSubsLen x K)
-  //
-  // NOTE: 这里仍然必须 pack，
-  // 因为 arma::kmeans 需要紧密矩阵，不能用 XtS 的 row-block view（stride=dim）。
-  // ------------------------------------------------------------
   if (mCentroidsPerSubs.empty()) {
     mCentroidsPerSubs.resize(mSubspaceNum);
 
@@ -499,7 +171,6 @@ void PQ::trainIVF(RowMatrixXf &XTrain, const int nlist, bool verbose) {
                 << " K=" << mCentroidsNum << "\n";
     }
 
-    // 复用缓冲区，避免每个 subspace 频繁分配
     arma::fmat subData(mSubsLen, M);
     arma::fmat subMeans(mSubsLen, mCentroidsNum);
 
@@ -513,10 +184,9 @@ void PQ::trainIVF(RowMatrixXf &XTrain, const int nlist, bool verbose) {
                   << ", startCol=" << startCol << ")\n";
       }
 
-      // pack: subData(:, j) = XtS(startCol : startCol+mSubsLen-1, j)
       #pragma omp parallel for schedule(static)
       for (int j = 0; j < M; ++j) {
-        const float* src = XtS.col(j).data() + startCol; // 列内连续
+        const float* src = XtS.col(j).data() + startCol; 
         float* dst = subData.colptr(j);
         std::memcpy(dst, src, sizeof(float) * mSubsLen);
       }
@@ -613,13 +283,11 @@ void PQ::encodeIVF(const RowMatrixXf &XTrain, bool verbose /*=false*/) {
     assert(mCentroidsPerSubs[s].cols() == mSubsLen);
   }
 
-  // 确保 lists 已经存在
   if ((int)mIVF.lists.size() != mIVF.nlist) {
     mIVF.lists.clear();
     mIVF.lists.resize(mIVF.nlist);
   }
 
-  // 可选：清空旧的 index 内容（如果你想 incremental add，删掉这段并改成 append）
   for (auto &lst : mIVF.lists) {
     lst.idmap.clear();
     lst.codes.resize(0, mSubspaceNum);
@@ -652,27 +320,7 @@ void PQ::encodeIVF(const RowMatrixXf &XTrain, bool verbose /*=false*/) {
   const int T = omp_get_max_threads();
 
   if (mCentroidsNum <= 256) {
-    // for (int i = 0; i < Nb; ++i) {
-    //   const int lid = assign[i];
-    //   const int pos = writePos[lid]++;
 
-    //   auto &lst = mIVF.lists[lid];
-
-    //   // local -> original id
-    //   lst.idmap[pos] = i; // 如果你有外部原始 id，这里换成那个 id
-
-    //   // encode M subspaces
-    //   for (int s = 0; s < mSubspaceNum; ++s) {
-    //     const float* xs = XTrain.row(i).data() + s * mSubsLen;
-    //     uint16_t code = encodeSubspaceNN(xs, mCentroidsPerSubs[s], mCentroidsNum, mSubsLen);
-    //     lst.codes(pos, s) = code;
-    //   }
-    // }
-
-  // 4) fill (encode PQ codes using GLOBAL codebook) -- parallel, no races
-
-
-  // Pass 4.1) per-thread histogram counts: countsT[tid][lid]
   std::vector<int> countsT(T * nlist, 0);
 
   #pragma omp parallel
@@ -687,7 +335,6 @@ void PQ::encodeIVF(const RowMatrixXf &XTrain, bool verbose /*=false*/) {
     }
   }
 
-  // Pass 4.2) compute per-thread base offset for each list: baseT[tid][lid]
   std::vector<int> baseT(T * nlist, 0);
   for (int lid = 0; lid < nlist; ++lid) {
     int run = 0;
@@ -695,16 +342,12 @@ void PQ::encodeIVF(const RowMatrixXf &XTrain, bool verbose /*=false*/) {
       baseT[t * nlist + lid] = run;
       run += countsT[t * nlist + lid];
     }
-    // 可选 sanity check：run 应该等于 counts[lid]
-    // assert(run == counts[lid]);
   }
 
-  // Pass 4.3) parallel write: each thread writes into its own [base, base+count) range
   #pragma omp parallel
   {
     const int tid = omp_get_thread_num();
 
-    // thread-local cursors per list
     std::vector<int> cursor(nlist);
     for (int lid = 0; lid < nlist; ++lid) {
       cursor[lid] = baseT[tid * nlist + lid];
@@ -713,8 +356,7 @@ void PQ::encodeIVF(const RowMatrixXf &XTrain, bool verbose /*=false*/) {
     #pragma omp for schedule(static)
     for (int i = 0; i < Nb; ++i) {
       const int lid = assign[i];
-      const int pos = cursor[lid]++;   // thread-local, no race
-
+      const int pos = cursor[lid]++; 
       auto &lst = mIVF.lists[lid];
 
       lst.idmap[pos] = i;
@@ -855,10 +497,6 @@ void PQ::encodeIVF(const RowMatrixXf &XTrain, bool verbose /*=false*/) {
   }
 
 
-  // 5) sanity checks
-  // for (int lid = 0; lid < mIVF.nlist; ++lid) {
-  //   assert(writePos[lid] == counts[lid]);
-  // }
 
   if (verbose) {
     long long tot = 0;
@@ -901,7 +539,6 @@ void PQ::buildGroups() {
   const int M = static_cast<int>(globalSmallCodebook.cols());
   assert(M >= 8 && "Need at least 8 subspaces (cols >= 8).");
 
-  // 0) 清空旧内容（257 组都清）
   for (auto& g : groups) {
     g.mSmallCodebook.resize(0, M);
     g.pqID.clear();
@@ -923,7 +560,6 @@ void PQ::buildGroups() {
     return gid; // 0..255
   };
 
-  // 1) 第一遍：统计每组原始大小
   std::array<int, 256> counts{};
   counts.fill(0);
   for (int r = 0; r < N; ++r) {
@@ -931,24 +567,21 @@ void PQ::buildGroups() {
     counts[gid]++;
   }
 
-  // 2) 计算每组“保留数量”和“搬走数量”，并统计最后一组大小
   std::array<int, 256> keepCounts{};
   std::array<int, 256> moveCounts{};
   keepCounts.fill(0);
   moveCounts.fill(0);
 
 
-  int lastCount = 0; // groups[256] 的最终大小
+  int lastCount = 0; 
 
   for (int gid = 0; gid < 256; ++gid) {
     const int sz = counts[gid];
 
     if (sz < th) {
-      // 规则 1：整组搬到最后一组
       keepCounts[gid] = 0;
       moveCounts[gid] = sz;
     } else {
-      // 规则 2：保留能整除32的部分，尾巴搬走
       const int keep = (sz / 32) * 32;
       keepCounts[gid] = keep;
       moveCounts[gid] = sz - keep;
@@ -957,7 +590,6 @@ void PQ::buildGroups() {
     lastCount += moveCounts[gid];
   }
 
-  // 3) 分配各组矩阵 & pqID（0..255 用 keepCounts，256 用 lastCount）
   for (int gid = 0; gid < 256; ++gid) {
     const int keep = keepCounts[gid];
     if (keep == 0) continue;
@@ -970,9 +602,8 @@ void PQ::buildGroups() {
     groups[256].pqID.resize(lastCount);
   }
 
-  // 4) 第二遍：按“组内出现顺序”决定去留/搬运，并填充
-  std::array<int, 256> seenInGroup{};   // 该行在所属组内是第几个（0-based）
-  std::array<int, 256> writeKeepPos{};  // 写入各组(0..255)的位置
+  std::array<int, 256> seenInGroup{};  
+  std::array<int, 256> writeKeepPos{}; 
   seenInGroup.fill(0);
   writeKeepPos.fill(0);
   int writeLastPos = 0;
@@ -991,7 +622,6 @@ void PQ::buildGroups() {
       }
       groups[gid].pqID[pos] = r;
     } else {
-      // 搬到最后一组 groups[256]
       const int pos = writeLastPos++;
 
       for (int c = 0; c < M; ++c) {
@@ -1059,7 +689,6 @@ float PQ::subspaceDistSq(
     return (XTrain.block(rowIdx, sIdx * subsLen, 1, subsLen) - centroids.block(code, 0, 1, subsLen)).squaredNorm();
 }
 
-// codebook(row, s) 可读写的泛型
 template<class T>
 void PQ::encodeImplReorder(
     const RowMatrixXf& XTrain,
@@ -1147,10 +776,6 @@ void PQ::encodeImplReorder(
         }
     }
 
-    // 注意：如果你后续用 code 去索引 centroid（mCentroidsPerSubs[s].row(code)）
-    // 那你要把 centroid 的行也按同样 permutation 重新排列，
-    // 否则 “code 语义”就变了。
-    // 这里我们直接把 centroid 行也重排，使 code->centroid 一致。
     for (int s = 0; s < M; ++s) {
         Eigen::MatrixXf newC(Ks, L);
         for (int newc = 0; newc < Ks; ++newc) {
@@ -1158,7 +783,6 @@ void PQ::encodeImplReorder(
             newC.row(newc) = mCentroidsPerSubs[s].row(oldc);
         }
         mCentroidsPerSubs[s] = std::move(newC);
-        // counts 也要同步变成 new-code 顺序，方便后面 topC
         std::vector<int> newCounts(Ks, 0);
         for (int newc = 0; newc < Ks; ++newc) {
             int oldc = perm_code[s][newc];
@@ -1203,11 +827,6 @@ void PQ::encodeImplReorder(
       }
     }
 
-    // -----------------------------
-    // Step 5) reorder subspaces:
-    // "subspaces按topC频率和最高的降序排序"
-    // 这里用 (topCMass, maxFreq) desc 作为排序键
-    // -----------------------------
     std::vector<SubspaceScore> scores;
     scores.reserve(M);
     for (int s = 0; s < M; ++s) {
@@ -1236,8 +855,6 @@ void PQ::encodeImplReorder(
     // 2) mCentroidsPerSubs
     // 3) counts
     {
-        // codebook: create new view/matrix via temp
-        // 这里用一个临时二维容器写回（你可改成 Eigen Matrix/自家矩阵）
         std::vector<CodewordType> tmp((size_t)N * (size_t)M);
 
         for (int row = 0; row < N; ++row) {
@@ -1260,12 +877,6 @@ void PQ::encodeImplReorder(
         }
     }
 
-    // -----------------------------
-    // Step 6) reorder vectors by dimAlpha
-    // dimAlpha = number of first dimAlpha subspaces whose code < topC
-    // (理解：从 subspace 0 开始计数连续满足 code < topC 的前缀长度)
-    // 然后按 dimAlpha 降序排序
-    // -----------------------------
     std::vector<int> dimAlphaVec(N, 0);
     for (int row = 0; row < N; ++row) {
         int da = 0;
@@ -1284,12 +895,9 @@ void PQ::encodeImplReorder(
         return a < b;
     });
 
-    // Apply vector reorder to codebook rows (以及你如果需要也可同步重排 XTrain / 原始 vectors)
   {
       std::vector<CodewordType> tmp((size_t)N * (size_t)M);
 
-      // ✅ 同步维护：newRow -> originalID
-      // 假设 PQ 类里有成员 std::vector<int> toOriginalID;
       if ((int)toOriginalID.size() != N) {
           toOriginalID.resize(N);
           std::iota(toOriginalID.begin(), toOriginalID.end(), 0);
@@ -1299,21 +907,17 @@ void PQ::encodeImplReorder(
       for (int newRow = 0; newRow < N; ++newRow) {
           int oldRow = perm_vec[newRow];
 
-          // 重排 codebook
           for (int s = 0; s < M; ++s) {
               tmp[(size_t)newRow * M + s] = (CodewordType)codebook(oldRow, s);
           }
 
-          // ✅ 重排 ID 映射
           newToOriginalID[newRow] = toOriginalID[oldRow];
       }
 
-      // 写回 codebook
       for (int row = 0; row < N; ++row)
           for (int s = 0; s < M; ++s)
               codebook(row, s) = tmp[(size_t)row * M + s];
 
-      // ✅ 写回映射
       toOriginalID = std::move(newToOriginalID);
   }
 
@@ -1340,11 +944,9 @@ void PQ::encodeImplReorder(
                 }
             }
 
-            // ---- 写 1 个 bit（流式）----
             if (all64) {
                 curWord |= (1LL << bitPos);  // true -> 1
             }
-            // false -> 0（什么都不做）
 
             bitPos++;
 
@@ -1358,14 +960,13 @@ void PQ::encodeImplReorder(
 }
 
 RowMatrixXf PQ::decode() {
-  int numSamples = mCodebook.rows();       // 数据样本数量
+  int numSamples = mCodebook.rows();     
 
   RowMatrixXf decodedData(numSamples, mSubspaceNum * mSubsLen);
-  // 逐个子空间解码
   for (int iSubs = 0; iSubs < mSubspaceNum; ++iSubs) {
-      const RowMatrixXf& centroids = mCentroidsPerSubs[iSubs];  // 当前子空间的质心矩阵
+      const RowMatrixXf& centroids = mCentroidsPerSubs[iSubs]; 
       for (int iSample = 0; iSample < numSamples; ++iSample) {
-          int centroidIndex = mCodebook(iSample, iSubs);  // 当前样本的质心索引
+          int centroidIndex = mCodebook(iSample, iSubs); 
           decodedData.block(iSample, iSubs * mSubsLen, 1, mSubsLen) = centroids.row(centroidIndex);
       }
   }
@@ -1375,25 +976,8 @@ RowMatrixXf PQ::decode() {
 
 
 LabelDistVecF PQ::search(const RowMatrixXf &XTest, const int k, bool verbose) {
-  // LUTType lut(mCentroidsNum, mSubspaceNum);
   LabelDistVecF ret;
-  // ret.labels.resize(k * XTest.rows());
-  // ret.distances.resize(k * XTest.rows());
-  // static TopKHeap answers;
-  // answers.reset(k);
-
-  // for (int q_idx=0; q_idx < (int)XTest.rows(); q_idx++) {
-  //   CreateLUT(XTest.row(q_idx), lut);
-  //   searchHeap(lut, k, q_idx, answers);
-  // }
-
-
-
-  // std::copy(answers.ids, answers.ids+k, ret.labels.begin());
-
   assert(false && "NOT IMPLEMENTED");
-
-
   return ret;
 }
 
@@ -1907,8 +1491,6 @@ void PQ::searchOneIVF(
     assert(lst.codes.cols() == mSubspaceNum);
 
 
-    // 你当前 kernel 是 uint8 + 128 centroids (按你给的函数名)
-    // 这里只给 mSubspaceNum==8 的例子；你可以照你原来的 switch 扩展
 #if defined(__AVX512VBMI__) && defined(__AVX512BW__) && defined(__AVX512F__)
     if(mCentroidsNum == 256) {
       switch(mSubspaceNum){

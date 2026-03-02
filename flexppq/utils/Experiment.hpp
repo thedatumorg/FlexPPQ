@@ -546,40 +546,33 @@ template <int IdxOffset = 0>
 double getMeanAveragePrecisionAtR(const std::vector<int>& predictedTopNN, 
                                   const std::vector<std::vector<int>>& groundTruthLabels, 
                                   const int numNeighbors, const int R) {
-    double totalAP = 0.0; // 存储所有查询的平均精度之和
-    int numQueries = groundTruthLabels.size(); // 查询的数量
+    double totalAP = 0.0; 
+    int numQueries = groundTruthLabels.size(); 
 
     for (int queryIndex = 0; queryIndex < numQueries; ++queryIndex) {
-        // 获取top R ground truth
         const std::unordered_set<int> groundTruthSet(
             groundTruthLabels[queryIndex].begin(), groundTruthLabels[queryIndex].begin() + R
         );
 
-        // 计算当前查询的 Average Precision (AP)
         double averagePrecision = 0.0;
-        int numRelevantRetrieved = 0; // 累计相关项目数
+        int numRelevantRetrieved = 0;
 
         for (int i = 0; i < numNeighbors; ++i) {
-            // 获取预测的第 i 个最近邻
             int predictedNeighbor = predictedTopNN[queryIndex * numNeighbors + i] - IdxOffset;
 
-            // 检查是否在 Ground Truth 中
             if (groundTruthSet.count(predictedNeighbor) > 0) {
                 numRelevantRetrieved++;
-                // 累加精度
                 averagePrecision += static_cast<double>(numRelevantRetrieved) / (i + 1);
             }
         }
 
-        // 如果有相关项，取平均
         if (!groundTruthSet.empty()) {
             averagePrecision /= groundTruthSet.size();
         }
 
-        totalAP += averagePrecision; // 累加 AP
+        totalAP += averagePrecision; 
     }
 
-    // 返回 MAP@R
     return totalAP / numQueries;
 }
 

@@ -38,14 +38,13 @@ int sgemm_ (
 }
 
 
-// 每个 bucket 最多存 k 个 id（足够产出 top-k；ties 多时取前 k 个即可）
 struct BucketTopK_u8 {
     int k;
-    int w;                 // 当前阈值（只保留 dist <= w 的候选）
-    uint32_t kept;         // 当前保留的总数（dist <= w 的数量）
+    int w;              
+    uint32_t kept;        
     std::array<uint32_t, 256> hist{};
-    std::vector<int> ids_flat;          // 256 * k
-    std::array<uint16_t, 256> sz{};     // 每桶实际存了多少个
+    std::vector<int> ids_flat;          
+    std::array<uint16_t, 256> sz{};   
 
     explicit BucketTopK_u8(int k_) : k(k_), w(255), kept(0), ids_flat(256 * k_) {
         hist.fill(0);
@@ -62,31 +61,25 @@ struct BucketTopK_u8 {
         }
     }
 
-    // 收紧阈值 w，让 kept 尽量靠近 k（把更差的 dist 层整体丢弃）
     inline void shrink_to_k() {
         while (w > 0) {
             uint32_t hw = hist[w];
-            if (kept - hw < (uint32_t)k) break; // 再丢 w 这一层就不够 k 了
+            if (kept - hw < (uint32_t)k) break;
             kept -= hw;
             clear_bucket(w);
             --w;
         }
 
-        // 现在 dist < w 的数量是 kept - hist[w]，w 桶可能仍太多 -> 裁剪到需要的数量
         uint32_t below = kept - hist[w];
-        uint32_t need_at_w = (uint32_t)k - below;     // 我们只需要 w 桶的前 need_at_w 个 id
+        uint32_t need_at_w = (uint32_t)k - below;   
         if (need_at_w < sz[w]) sz[w] = (uint16_t)need_at_w;
 
-        // 规范化 kept
         kept = (uint32_t)k;
-        // 注意：hist[w] 仍是“被接受的数量”（可能 > need_at_w），但 kept 已经当作 k 用了。
-        // 之后只要我们继续用 “d <= w 才 accept” 且 kept>k 时 shrink，就不会错。
     }
 
     inline void observe(uint8_t dist, int id) {
         int d = (int)dist;
-        if (d > w) return;          // 当前阈值之外直接忽略（不统计、不存）
-
+        if (d > w) return;       
         hist[d] += 1;
         kept += 1;
         push_id(d, id);
@@ -94,7 +87,6 @@ struct BucketTopK_u8 {
         if (kept > (uint32_t)k) shrink_to_k();
     }
 
-    // 输出 top-k（按 dist 从小到大），并写入 res
     template <class TopK>
     inline void finalize_to(TopK& res) const {
         const uint8_t INF = std::numeric_limits<uint8_t>::max();
@@ -108,7 +100,6 @@ struct BucketTopK_u8 {
                 ++out;
             }
         }
-        // 不够 k 的情况（极少，除非 N<k 或 prune 太狠）
         for (; out < k; ++out) {
             res.dist[out] = INF;
             res.ids[out]  = -1;
@@ -244,7 +235,6 @@ public:
         std::fill_n(ids, realK, ID{0, 0});
       }
 
-      // heap size 固定=K，heap[0] 是最大 dist（最差）
       inline uint8_t worst() const { return dist[0]; }
 
       inline void siftDown(int i) {
@@ -342,21 +332,6 @@ public:
     }
   }
 
-  // void CreateLUT(const RowVectorXf &query, LUTType &lut) {
-  //     lut.setZero();
-  //     float *lutPtr = lut.data();
-
-  //     for (int newSubs = 0; newSubs < mSubspaceNum; ++newSubs) {
-  //         const int oldSubs = this->perm_sub[newSubs];              // new -> old
-  //         const float* qsub = query.data() + oldSubs * mSubsLen;
-
-  //         fvec_L2sqr_ny(lutPtr, qsub,
-  //                       mCentroidsPerSubs[newSubs].data(),     // centroids already reordered
-  //                       mSubsLen, mCentroidsNum);
-
-  //         lutPtr += lut.rows(); // next subspace LUT block
-  //     }
-  // }
 
   struct SubspaceCentroidStats {
     // [subspace][centroid] -> count
@@ -590,7 +565,7 @@ void PQ::searchHeap(ColMatrix<TargetDType> &lut, const int k, int q_idx, TopKHea
 }
 #include <iomanip>
 inline void print_m256i_uint8(__m256i data) {
-    alignas(32) uint8_t buffer[32]; // 临时数组用于存储
+    alignas(32) uint8_t buffer[32]; 
     _mm256_store_si256(reinterpret_cast<__m256i*>(buffer), data);
 
     for (int i = 0; i < 32; ++i) {
@@ -600,7 +575,7 @@ inline void print_m256i_uint8(__m256i data) {
 }
 
 inline void print_m256i_uint8(__m128i data) {
-    alignas(32) uint8_t buffer[16]; // 临时数组用于存储
+    alignas(32) uint8_t buffer[16]; 
     _mm_store_si128(reinterpret_cast<__m128i*>(buffer), data);
 
     for (int i = 0; i < 16; ++i) {
@@ -610,7 +585,7 @@ inline void print_m256i_uint8(__m128i data) {
 }
 
 inline void print_m256i_uint16(__m256i data) {
-    alignas(32) uint16_t buffer[16]; // 临时数组用于存储
+    alignas(32) uint16_t buffer[16]; 
     _mm256_store_si256(reinterpret_cast<__m256i*>(buffer), data);
 
     for (int i = 0; i < 16; ++i) {
@@ -620,7 +595,7 @@ inline void print_m256i_uint16(__m256i data) {
 }
 
 inline void print_m256i_uint32(__m256i data) {
-    alignas(32) uint32_t buffer[8]; // 临时数组用于存储
+    alignas(32) uint32_t buffer[8]; 
     _mm256_store_si256(reinterpret_cast<__m256i*>(buffer), data);
 
     for (int i = 0; i < 8; ++i) {
@@ -722,10 +697,9 @@ template <typename TargetDType, int numCentroid, int numSubspaceNum>
 void PQ::searchHeapSIMD(ColMatrix<TargetDType>& lut, const int k, int q_idx,
                         TopKHeap& res) {
 
-    const int ksub = lut.rows();       // 子空间距离表的行数
+    const int ksub = lut.rows();     
 
-    // Step 1: 预加载所有子空间的 LUT 数据到寄存器
-    __m256i lut_registers[numSubspaceNum]; // 最多支持 16 个子空间
+    __m256i lut_registers[numSubspaceNum];
     if constexpr (std::is_same<TargetDType, uint8_t>::value && numCentroid==16){
       for (int col = 0; col < numSubspaceNum; ++col) {
           __m128i lut128 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(lut.data() + col * ksub));
@@ -740,7 +714,6 @@ void PQ::searchHeapSIMD(ColMatrix<TargetDType>& lut, const int k, int q_idx,
     // mSmallCodebook is col-major
     uint8_t* codes = mSmallCodebook.data();
 
-    // Step 2: 遍历 Codebook 进行搜索
     int stepSize;
     const int codebookRow = mSmallCodebook.rows();
 
@@ -760,11 +733,10 @@ void PQ::searchHeapSIMD(ColMatrix<TargetDType>& lut, const int k, int q_idx,
 
     for (int i = 0; i < codebookRow - codebookRow % stepSize; i += stepSize) {
 
-        __m256i acc = _mm256_setzero_si256(); // 初始化累积距离寄存器
+        __m256i acc = _mm256_setzero_si256();
 
         for (int col = 0; col < numSubspaceNum; ++col) {
             if constexpr (std::is_same<TargetDType, uint8_t>::value) {
-                // 批量加载 32 个 codes
                 if constexpr(numCentroid == 16) {
                   __m256i code_vector = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(codes + codebookRow*col));
                   __m256i dist_vector = _mm256_shuffle_epi8(lut_registers[col], code_vector); 
@@ -810,7 +782,6 @@ void PQ::searchHeapSIMD(ColMatrix<TargetDType>& lut, const int k, int q_idx,
           assert(false && "NOT IMPLEMENTED!");
         }
         
-        // Step 4: 比较并更新堆
         if(cmp_mask){
           alignas(32) TargetDType temp[32];
           _mm256_store_si256(reinterpret_cast<__m256i*>(temp), acc);
@@ -854,20 +825,17 @@ void PQ::searchHeapSIMDLargeCentroids(ColMatrix<TargetDType>& lut, const int k, 
                         TopKHeap& res) {
 
 
-    const int ksub = lut.rows();       // 子空间距离表的行数
+    const int ksub = lut.rows();    
 
-    // Step 1: 预加载所有子空间的 LUT 数据到寄存器
-    __m256i lut_registers[numSubspaceNum*2]; // 最多支持 16 个子空间
+    __m256i lut_registers[numSubspaceNum*2];
     for (int col = 0; col < 2*numSubspaceNum;) {
         lut_registers[col] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/2) * ksub));
         lut_registers[col + 1] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/2) * ksub + 32 ));
         col += 2;
     }
 
-    // mSmallCodebook is col-major
     uint8_t* codes = mSmallCodebook.data();
 
-    // Step 2: 遍历 Codebook 进行搜索
     int stepSize;
     const int codebookRow = mSmallCodebook.rows();
 
@@ -887,11 +855,10 @@ void PQ::searchHeapSIMDLargeCentroids(ColMatrix<TargetDType>& lut, const int k, 
 
     for (int i = 0; i < codebookRow - codebookRow % stepSize; i += stepSize) {
 
-        __m256i acc = _mm256_setzero_si256(); // 初始化累积距离寄存器
+        __m256i acc = _mm256_setzero_si256(); 
 
         for (int col = 0; col < numSubspaceNum*2;) {
             if constexpr (std::is_same<TargetDType, uint8_t>::value) {
-                // 批量加载 32 个 codes
                 if constexpr (numCentroid == 64) {
                   const __m256i mask_0 = _mm256_set1_epi8(0x0F);
                   const __m256i mask_1 = _mm256_set1_epi8(0x1F);
@@ -954,7 +921,6 @@ void PQ::searchHeapSIMDLargeCentroids(ColMatrix<TargetDType>& lut, const int k, 
           assert(false && "NOT IMPLEMENTED!");
         }
         
-        // Step 4: 比较并更新堆
         if(cmp_mask){
           alignas(32) TargetDType temp[32];
           _mm256_store_si256(reinterpret_cast<__m256i*>(temp), acc);
@@ -1017,10 +983,9 @@ void PQ::searchHeapSIMD128Centroids(
 
     constexpr int numCentroid=128;
 
-    const int ksub = lut.rows();       // 子空间距离表的行数
+    const int ksub = lut.rows();    
 
-    // Step 1: 预加载所有子空间的 LUT 数据到寄存器
-    __m256i lut_registers[numSubspaceNum*4]; // 最多支持 16 个子空间
+    __m256i lut_registers[numSubspaceNum*4];
     for (int col = 0; col < 4*numSubspaceNum;) {
         lut_registers[col] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/4) * ksub));
         lut_registers[col + 1] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/4) * ksub + 32 ));
@@ -1033,7 +998,6 @@ void PQ::searchHeapSIMD128Centroids(
     uint8_t* codes = mSmallCodebook.data();
 
 
-    // Step 2: 遍历 Codebook 进行搜索
     int stepSize;
     const int codebookRow = mSmallCodebook.rows();
 
@@ -1052,7 +1016,7 @@ void PQ::searchHeapSIMD128Centroids(
     }
 
     long long* prunePtr = pruneMarks.data();
-    long long curPrune  = *prunePtr++;  // 读 word0 后指向 word1
+    long long curPrune  = *prunePtr++; 
     uint8_t prunePos = 0;
 
     const __m256i mask_0 = _mm256_set1_epi8(0x0F);
@@ -1093,7 +1057,7 @@ void PQ::searchHeapSIMD128Centroids(
 
     for (int i = 0; i < codebookRow - codebookRow % stepSize; i += stepSize) {
 
-        __m256i acc = _mm256_setzero_si256(); // 初始化累积距离寄存器
+        __m256i acc = _mm256_setzero_si256();
 
         for (int col = 0; col < numSubspaceNum*4;) {
             if constexpr (std::is_same<TargetDType, uint8_t>::value) {
@@ -1101,13 +1065,7 @@ void PQ::searchHeapSIMD128Centroids(
                 if constexpr (numCentroid == 128) {
                   __m256i code_vector = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(codes + codebookRow*(col/4))); // 32 codes, 8 bits each
 
-                  // bool isPrune = (curPrune) & 1LL;
-                  // curPrune >>= 1; prunePos++;
-                  // if (prunePos == 64) {
-                  //   prunePos = 0;
-                  //   curPrune = *prunePtr++;           // 读下一个 word
-                  // }
-                  // isPrune = true;
+
 
                   //if (!isPrune) {
                   if (true) {
@@ -1214,16 +1172,15 @@ void PQ::searchHeapSIMD128Centroids(
         }
 
         
-        // Step 4: 比较并更新堆
         
         if(cmp_mask){
           alignas(32) uint8_t temp[32];
           _mm256_store_si256(reinterpret_cast<__m256i*>(temp), acc);
 
           while (cmp_mask) {
-            int j = __builtin_ctz(cmp_mask);   // 找最低位 1
+            int j = __builtin_ctz(cmp_mask);  
             res.push(temp[j], ID{idBias,  i + j});
-            cmp_mask &= cmp_mask - 1;                 // 清掉最低位 1
+            cmp_mask &= cmp_mask - 1;                
           }
 
           heap_top = _mm256_set1_epi8(res.worst());
@@ -1255,290 +1212,6 @@ void PQ::searchHeapSIMD128Centroids(
 
 
 
-// template <typename TargetDType, int numSubspaceNum>
-// void PQ::searchHeapSIMD128Centroids(ColMatrix<TargetDType>& lut, const int k, int q_idx,
-//                         TopKHeap& res) {
-
-//     constexpr int numCentroid=128;
-
-//     const int ksub = lut.rows();       // 子空间距离表的行数
-
-//     // Step 1: 预加载所有子空间的 LUT 数据到寄存器
-//     __m256i lut_registers[numSubspaceNum*4]; // 最多支持 16 个子空间
-//     for (int col = 0; col < 4*numSubspaceNum;) {
-//         lut_registers[col] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/4) * ksub));
-//         lut_registers[col + 1] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/4) * ksub + 32 ));
-//         lut_registers[col + 2] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/4) * ksub + 64 ));
-//         lut_registers[col + 3] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/4) * ksub + 96 ));
-//         col += 4;
-//     }
-
-//     // mSmallCodebook is col-major
-
-
-
-//     // Step 2: 遍历 Codebook 进行搜索
-//     int stepSize;
-
-//     __m256i heap_top;
-//     // whether there is a new dist less than heap_top
-//     int cmp_mask = 0;
-
-//     if constexpr (std::is_same<TargetDType, uint8_t>::value) {
-//       stepSize = 32;
-//       heap_top = _mm256_set1_epi8(res.worst());
-//     } else if constexpr (std::is_same<TargetDType, uint16_t>::value) {
-//       stepSize = 16;
-//       heap_top = _mm256_set1_epi16(0xFFFF);
-//     } else {
-//       assert(false);
-//     }
-
-//     long long* prunePtr = pruneMarks.data();
-//     long long curPrune  = *prunePtr++;  // 读 word0 后指向 word1
-//     uint8_t prunePos = 0;
-
-//     const __m256i mask_0 = _mm256_set1_epi8(0x0F);
-//     const __m256i mask_1 = _mm256_set1_epi8(0x1F);
-//     const __m256i mask_2 = _mm256_set1_epi8(0x2F);
-//     const __m256i mask_3 = _mm256_set1_epi8(0x3F);
-//     const __m256i mask_4 = _mm256_set1_epi8(0x4F);
-//     const __m256i mask_5 = _mm256_set1_epi8(0x5F);
-//     const __m256i mask_6 = _mm256_set1_epi8(0x6F);
-
-
-//     const __m256i mask_lo4 = _mm256_set1_epi8(0x0F);
-//     const __m256i mask_hi3 = _mm256_set1_epi8(0x07);
-//     const __m256i zero     = _mm256_setzero_si256();
-//     const __m256i ones     = _mm256_set1_epi8((char)0xFF);
-
-//     struct LUTPair{
-//       __m256i lo, hi;
-//     };
-
-//     alignas(32) LUTPair lutPairs[numSubspaceNum*4];    
-
-//     //auto start = std::chrono::steady_clock::now();
-//     for (int col = 0; col < numSubspaceNum*4; col += 4){
-//       lutPairs[col].lo = _mm256_permute2x128_si256(lut_registers[col], lut_registers[col], 0x00);
-//       lutPairs[col].hi = _mm256_permute2x128_si256(lut_registers[col], lut_registers[col], 0x11);
-//       lutPairs[col + 1].lo = _mm256_permute2x128_si256(lut_registers[col + 1], lut_registers[col + 1], 0x00);
-//       lutPairs[col + 1].hi = _mm256_permute2x128_si256(lut_registers[col + 1], lut_registers[col + 1], 0x11);
-//       lutPairs[col + 2].lo = _mm256_permute2x128_si256(lut_registers[col + 2], lut_registers[col + 2], 0x00);
-//       lutPairs[col + 2].hi = _mm256_permute2x128_si256(lut_registers[col + 2], lut_registers[col + 2], 0x11);
-//       lutPairs[col + 3].lo = _mm256_permute2x128_si256(lut_registers[col + 3], lut_registers[col + 3], 0x00);
-//       lutPairs[col + 3].hi = _mm256_permute2x128_si256(lut_registers[col + 3], lut_registers[col + 3], 0x11);
-//     }
-
-//     // auto end = std::chrono::steady_clock::now();
-//     // keyKernalSec += std::chrono::duration<double>(end - start).count();
-
-//     for(int groupID = 0; groupID < 256; ++groupID) {
-//       auto &curGroup = groups[groupID];
-//       auto &curCodebook = curGroup.mSmallCodebook;
-//       auto &curIDMap = curGroup.pqID;
-//       const int codebookRow = curCodebook.rows();
-//       uint8_t* codes = curCodebook.data();
-//       for (int i = 0; i < codebookRow; i += stepSize) {
-
-//         __m256i acc = _mm256_setzero_si256(); // 初始化累积距离寄存器
-
-//         for (int col = 0, s = 0; col < numSubspaceNum*4; s++) {
-//           const bool isLow = curGroup.isLow[s];
-//           int colBias = (isLow? 0 : 2);
-//           // 批量加载 32 个 codes
-//           //__m256i code_vector = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(codes + codebookRow*(col/4))); // 32 codes, 8 bits each
-//           __m256i code_vector = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(codes + (col/4) * codebookRow)); // 32 codes, 8 bits each
-//           code_vector = isLow ? code_vector : _mm256_and_si256(code_vector, mask_3);
-
-//           __m256i indices_low = _mm256_and_si256(code_vector, mask_0); // byte-wise AND, each 1 byte code only get its low 4 bits (0xXY -> 0x0Y)
-
-//           __m256i result_0 = _mm256_shuffle_epi8(lutPairs[col + colBias].lo, indices_low); // look-up based on 0x0Y
-//           __m256i result_1 = _mm256_shuffle_epi8(lutPairs[col + colBias].hi, indices_low); // look-up based on 0x1Y
-          
-//           // select lut_0 if code is 0x0Y. select lut_1 if code is 0x1Y ~ 0x3Y
-//           __m256i cmp = _mm256_cmpgt_epi8(code_vector, mask_0); 
-//           __m256i result_01 = _mm256_blendv_epi8(result_0, result_1, cmp); // conditional selection
-
-//           __m256i result_2 = _mm256_shuffle_epi8(lutPairs[col+1 + colBias].lo, indices_low); // look-up based on 0x2Y
-//           __m256i result_3 = _mm256_shuffle_epi8(lutPairs[col+1 + colBias].hi, indices_low); // look-up based on 0x3Y
-          
-//           // select lut_3 if code is 0x3Y. select lut_2 if code is 0x0Y ~ 0x2Y
-//           cmp = _mm256_cmpgt_epi8(code_vector, mask_2); 
-//           __m256i result_23 = _mm256_blendv_epi8(result_2, result_3, cmp); // conditional selection
-
-//           // select result_01 if code is 0x0Y or 0x1Y. select result_23 if code is 0x2Y or 0x3Y
-//           cmp = _mm256_cmpgt_epi8(code_vector, mask_1); 
-//           __m256i dist_vector = _mm256_blendv_epi8(result_01, result_23, cmp);
-
-//           acc = _mm256_adds_epu8(acc, dist_vector);
-//           col += 4;
-
-//         }
-
-
-//         codes += stepSize;
-//         __m256i cmp_result;
-//         if constexpr (std::is_same<TargetDType, uint8_t>::value) {
-//           // cmp_result = _mm256_cmpgt_epi8(heap_top, acc); // avx2 not supoort uint8 cmp, only int8 cmp
-
-//           // __m256i min_u = _mm256_min_epu8(acc, heap_top);
-//           // __m256i acc_le_heaptop = _mm256_cmpeq_epi8(min_u, acc); // if a pair is equal, set to 1s
-//           // cmp_mask = _mm256_movemask_epi8(acc_le_heaptop); // if there is any pair that acc[i] == min(acc[i], heap_top) => new dist found
-          
-          
-//           __m256i flip = _mm256_set1_epi8(char(0x80));
-//           __m256i a = _mm256_xor_si256(acc, flip);
-//           __m256i b = _mm256_xor_si256(heap_top, flip);
-//           __m256i lt = _mm256_cmpgt_epi8(b, a);          // (b > a) signed  <=> acc < heap_top unsigned
-//           cmp_mask = _mm256_movemask_epi8(lt);
-
-//         } else if constexpr (std::is_same<TargetDType, uint16_t>::value) {
-//           assert(false && "NOT IMPLEMENTED!");
-//         }
-
-//         // Step 4: 比较并更新堆
-        
-//         if(cmp_mask){
-//           alignas(32) uint8_t temp[32];
-//           _mm256_store_si256(reinterpret_cast<__m256i*>(temp), acc);
-
-//           while (cmp_mask) {
-//             int j = __builtin_ctz(cmp_mask);   // 找最低位 1
-//             res.push(temp[j], ID{idBias,  curIDMap[i + j]});
-//             cmp_mask &= cmp_mask - 1;                 // 清掉最低位 1
-//           }
-
-//           heap_top = _mm256_set1_epi8(res.worst());
-//           //keyKernalSec++;
-
-//         }
-
-//       }
-      
-
-//     }
-
-//     auto &curGroup = groups[256];
-//     auto &curCodebook = curGroup.mSmallCodebook;
-//     const int codebookRow = curCodebook.rows();
-//     uint8_t* codes = curCodebook.data();
-//     auto &curIDMap = curGroup.pqID;
-//     for (int i = 0; i < codebookRow - codebookRow % stepSize; i += stepSize) {
-
-//       __m256i acc = _mm256_setzero_si256(); // 初始化累积距离寄存器
-
-//       for (int col = 0; col < numSubspaceNum*4;) {
-//          // __m256i code_vector = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(codes + codebookRow*(col/4))); // 32 codes, 8 bits each
-//          __m256i code_vector = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(codes  + (col/4) * codebookRow)); // 32 codes, 8 bits each
-//          __m256i indices_low = _mm256_and_si256(code_vector, mask_0); // byte-wise AND, each 1 byte code only get its low 4 bits (0xXY -> 0x0Y)
-
-//         __m256i result_0 = _mm256_shuffle_epi8(lutPairs[col].lo, indices_low); // look-up based on 0x0Y
-//         __m256i result_1 = _mm256_shuffle_epi8(lutPairs[col].hi, indices_low); // look-up based on 0x1Y
-        
-//         // select lut_0 if code is 0x0Y. select lut_1 if code is 0x1Y ~ 0x3Y
-//         __m256i cmp = _mm256_cmpgt_epi8(code_vector, mask_0); 
-//         __m256i result_01 = _mm256_blendv_epi8(result_0, result_1, cmp); // conditional selection
-
-//         __m256i result_2 = _mm256_shuffle_epi8(lutPairs[col+1].lo, indices_low); // look-up based on 0x2Y
-//         __m256i result_3 = _mm256_shuffle_epi8(lutPairs[col+1].hi, indices_low); // look-up based on 0x3Y
-        
-//         // select lut_3 if code is 0x3Y. select lut_2 if code is 0x0Y ~ 0x2Y
-//         cmp = _mm256_cmpgt_epi8(code_vector, mask_2); 
-//         __m256i result_23 = _mm256_blendv_epi8(result_2, result_3, cmp); // conditional selection
-
-//         // select result_01 if code is 0x0Y or 0x1Y. select result_23 if code is 0x2Y or 0x3Y
-//         cmp = _mm256_cmpgt_epi8(code_vector, mask_1); 
-//         __m256i result_0123 = _mm256_blendv_epi8(result_01, result_23, cmp);
-
-//         __m256i result_4 = _mm256_shuffle_epi8(lutPairs[col+2].lo, indices_low); // look-up based on 0x0Y
-//         __m256i result_5 = _mm256_shuffle_epi8(lutPairs[col+2].hi, indices_low); // look-up based on 0x1Y
-        
-//         // select lut_4 if code is 0x0Y. select lut_5 if code is 0x1Y ~ 0x7Y
-//         cmp = _mm256_cmpgt_epi8(code_vector, mask_4); 
-//         __m256i result_45 = _mm256_blendv_epi8(result_4, result_5, cmp); // conditional selection
-
-//         __m256i result_6 = _mm256_shuffle_epi8(lutPairs[col+3].lo, indices_low); // look-up based on 0x2Y
-//         __m256i result_7 = _mm256_shuffle_epi8(lutPairs[col+3].hi, indices_low); // look-up based on 0x3Y
-
-//         cmp = _mm256_cmpgt_epi8(code_vector, mask_6); 
-//         __m256i result_67 = _mm256_blendv_epi8(result_6, result_7, cmp); // conditional selection
-        
-//         // select lut_3 if code is 0x3Y. select lut_2 if code is 0x0Y ~ 0x2Y
-//         cmp = _mm256_cmpgt_epi8(code_vector, mask_5); 
-//         __m256i result_4567 = _mm256_blendv_epi8(result_45, result_67, cmp); // conditional selection
-
-//         // select result_01 if code is 0x0Y or 0x1Y. select result_23 if code is 0x2Y or 0x3Y
-//         cmp = _mm256_cmpgt_epi8(code_vector, mask_3); 
-//         __m256i dist = _mm256_blendv_epi8(result_0123, result_4567, cmp);
-
-//         acc = _mm256_adds_epu8(acc, dist);
-//         col += 4;
-
-//       }
-
-//       codes += stepSize;
-//       __m256i cmp_result;
-//       if constexpr (std::is_same<TargetDType, uint8_t>::value) {
-//         // cmp_result = _mm256_cmpgt_epi8(heap_top, acc); // avx2 not supoort uint8 cmp, only int8 cmp
-
-//         // __m256i min_u = _mm256_min_epu8(acc, heap_top);
-//         // __m256i acc_le_heaptop = _mm256_cmpeq_epi8(min_u, acc); // if a pair is equal, set to 1s
-//         // cmp_mask = _mm256_movemask_epi8(acc_le_heaptop); // if there is any pair that acc[i] == min(acc[i], heap_top) => new dist found
-        
-        
-//         __m256i flip = _mm256_set1_epi8(char(0x80));
-//         __m256i a = _mm256_xor_si256(acc, flip);
-//         __m256i b = _mm256_xor_si256(heap_top, flip);
-//         __m256i lt = _mm256_cmpgt_epi8(b, a);          // (b > a) signed  <=> acc < heap_top unsigned
-//         cmp_mask = _mm256_movemask_epi8(lt);
-
-//       } else if constexpr (std::is_same<TargetDType, uint16_t>::value) {
-//         assert(false && "NOT IMPLEMENTED!");
-//       }
-
-//       // Step 4: 比较并更新堆
-      
-//       if(cmp_mask){
-//         alignas(32) uint8_t temp[32];
-//         _mm256_store_si256(reinterpret_cast<__m256i*>(temp), acc);
-
-//         while (cmp_mask) {
-//           int j = __builtin_ctz(cmp_mask);   // 找最低位 1
-//           res.push(temp[j], ID{idBias,  curIDMap[i + j]});
-//           cmp_mask &= cmp_mask - 1;                 // 清掉最低位 1
-//         }
-
-//         heap_top = _mm256_set1_epi8(res.worst());
-//         //keyKernalSec++;
-
-//       }
-
-//     }
-
-//     codes = curCodebook.data();
-//     for(int i = codebookRow - codebookRow % stepSize; i < codebookRow; i++) {
-//       TargetDType dist = 0;
-//       const TargetDType * luts = lut.data();
-//       const int ksub = lut.rows();
-  
-//       // for (int col=0; col < mSubspaceNum; col++) {
-//       //   dist = unsigendSaturatedAdd<TargetDType>(dist, luts[*codes++]);
-//       //   luts += ksub;
-//       // }
-//       for (int col = 0; col < mSubspaceNum; ++col) {
-//         uint8_t code = codes[col * codebookRow + i];
-//         dist = unsigendSaturatedAdd(dist, luts[code]);
-//         luts += ksub;
-//       }
-      
-//       if (dist < res.worst()) {        
-//         res.push(dist,  ID{idBias,  curIDMap[i]});         
-//       }
-//     }
-
-// }
-
 
 template<typename TargetDType>
 LabelDistVecF PQ::searchOne(const RowVectorXf &XTest, const int k, bool simd, bool verbose,
@@ -1550,13 +1223,6 @@ LabelDistVecF PQ::searchOne(const RowVectorXf &XTest, const int k, bool simd, bo
   LabelDistVecF ret;
   ret.labels.resize(k);
   ret.distances.resize(k);
-  // this is a min-heap
-  // auto start = std::chrono::steady_clock::now();
-  
-  // auto end = std::chrono::steady_clock::now();
-  // lutSec += std::chrono::duration<double>(end - start).count();
-  // static TopKHeap answers;
-  // answers.reset(k);
 
   if constexpr (!std::is_same<TargetDType, float>::value) {
     std::vector<TargetDType> distances;
@@ -1766,10 +1432,10 @@ void PQ::searchHeapSIMD(
   ColMatrix<TargetDType>& lut, const int k, int q_idx,
   TopKHeap& res, ColMatrix<uint8_t> &curCodes, std::vector<int>& idmap) {
 
-    const int ksub = lut.rows();       // 子空间距离表的行数
+    const int ksub = lut.rows();   
 
-    // Step 1: 预加载所有子空间的 LUT 数据到寄存器
-    __m256i lut_registers[numSubspaceNum]; // 最多支持 16 个子空间
+
+    __m256i lut_registers[numSubspaceNum]; 
     if constexpr (numCentroids==16){
       for (int col = 0; col < numSubspaceNum; ++col) {
           __m128i lut128 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(lut.data() + col * ksub));
@@ -1785,7 +1451,6 @@ void PQ::searchHeapSIMD(
     uint8_t* codes = curCodes.data();
 
 
-    // Step 2: 遍历 Codebook 进行搜索
     int stepSize;
     const int codebookRow = curCodes.rows();
 
@@ -1824,12 +1489,11 @@ void PQ::searchHeapSIMD(
 
     for (int i = 0; i < codebookRow - codebookRow % stepSize; i += stepSize) {
 
-        __m256i acc = _mm256_setzero_si256(); // 初始化累积距离寄存器
+        __m256i acc = _mm256_setzero_si256(); 
 
         for (int col = 0; col < numSubspaceNum; col++) {
             __m256i code_vector = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(codes + codebookRow*(col))); // 32 codes, 8 bits each
             if constexpr (numCentroids == 32) {
-                // 批量加载 32 个 codes
 
                 __m256i indices_low = _mm256_and_si256(code_vector, mask_0); // byte-wise AND, each 1 byte code only get its low 4 bits (0xXY -> 0x0Y)
 
@@ -1869,16 +1533,15 @@ void PQ::searchHeapSIMD(
         }
 
         
-        // Step 4: 比较并更新堆
         
         if(cmp_mask){
           alignas(32) uint8_t temp[32];
           _mm256_store_si256(reinterpret_cast<__m256i*>(temp), acc);
 
           while (cmp_mask) {
-            int j = __builtin_ctz(cmp_mask);   // 找最低位 1
+            int j = __builtin_ctz(cmp_mask);  
             res.push(temp[j], ID{idBias,  idmap[i + j]});
-            cmp_mask &= cmp_mask - 1;                 // 清掉最低位 1
+            cmp_mask &= cmp_mask - 1;         
           }
 
           heap_top = _mm256_set1_epi8(res.worst());
@@ -1921,23 +1584,6 @@ void PQ::searchHeapSIMD(
         }
     }
 
-    // for(int i = codebookRow - codebookRow % stepSize; i < codebookRow; i++) {
-    //   TargetDType dist = 0;
-    //   const TargetDType * luts = lut.data();
-    //   const int ksub = lut.rows();
-  
-    //   for (int col=0; col < mSubspaceNum; col++) {
-    //     dist = unsigendSaturatedAdd<TargetDType>(dist, luts[*codes++]);
-    //     luts += ksub;
-    //   }
-      
-    //   if (dist < res.worst()) {        
-    //     res.push(dist,  ID{idBias,  idmap[i]});         
-    //   }
-
-    // }
-
-    //f::heap_reorder<f::CMax<TargetDType, int>>(k, heap_dis, heap_ids);
 }
 
 template <typename TargetDType, int numCentroid, int numSubspaceNum>
@@ -1945,10 +1591,9 @@ void PQ::searchHeapSIMDLargeCentroids(
   ColMatrix<TargetDType>& lut, const int k, int q_idx,
   TopKHeap& res, ColMatrix<uint8_t> &curCodes, std::vector<int>& idmap) {
 
-    const int ksub = lut.rows();       // 子空间距离表的行数
+    const int ksub = lut.rows();     
 
-    // Step 1: 预加载所有子空间的 LUT 数据到寄存器
-    __m256i lut_registers[numSubspaceNum*2]; // 最多支持 16 个子空间
+    __m256i lut_registers[numSubspaceNum*2];
     for (int col = 0; col < 2*numSubspaceNum;) {
         lut_registers[col] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/2) * ksub));
         lut_registers[col + 1] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/2) * ksub + 32 ));
@@ -1959,7 +1604,6 @@ void PQ::searchHeapSIMDLargeCentroids(
     uint8_t* codes = curCodes.data();
 
 
-    // Step 2: 遍历 Codebook 进行搜索
     int stepSize;
     const int codebookRow = curCodes.rows();
 
@@ -2002,11 +1646,10 @@ void PQ::searchHeapSIMDLargeCentroids(
 
     for (int i = 0; i < codebookRow - codebookRow % stepSize; i += stepSize) {
 
-        __m256i acc = _mm256_setzero_si256(); // 初始化累积距离寄存器
+        __m256i acc = _mm256_setzero_si256();
 
         for (int col = 0; col < numSubspaceNum*2;) {
             if constexpr (std::is_same<TargetDType, uint8_t>::value) {
-                // 批量加载 32 个 codes
                 __m256i code_vector = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(codes + codebookRow*(col/2))); // 32 codes, 8 bits each
 
                 __m256i indices_low = _mm256_and_si256(code_vector, mask_0); // byte-wise AND, each 1 byte code only get its low 4 bits (0xXY -> 0x0Y)
@@ -2061,16 +1704,15 @@ void PQ::searchHeapSIMDLargeCentroids(
         }
 
         
-        // Step 4: 比较并更新堆
         
         if(cmp_mask){
           alignas(32) uint8_t temp[32];
           _mm256_store_si256(reinterpret_cast<__m256i*>(temp), acc);
 
           while (cmp_mask) {
-            int j = __builtin_ctz(cmp_mask);   // 找最低位 1
+            int j = __builtin_ctz(cmp_mask); 
             res.push(temp[j], ID{idBias,  idmap[i + j]});
-            cmp_mask &= cmp_mask - 1;                 // 清掉最低位 1
+            cmp_mask &= cmp_mask - 1;            
           }
 
           heap_top = _mm256_set1_epi8(res.worst());
@@ -2081,20 +1723,7 @@ void PQ::searchHeapSIMDLargeCentroids(
 
     }
 
-    // for(int i = codebookRow - codebookRow % stepSize; i < codebookRow; i++) {
-    //   TargetDType dist = 0;
-    //   const TargetDType * luts = lut.data();
-    //   const int ksub = lut.rows();
-    //   for (int col=0; col < mSubspaceNum; col++) {
-    //     dist = unsigendSaturatedAdd<TargetDType>(dist, luts[*codes++]);
-    //     luts += ksub;
-    //   }
-      
-    //   if (dist < res.worst()) {        
-    //     res.push(dist,  ID{idBias,  idmap[i]});         
-    //   }
 
-    // }
 
     const int start = codebookRow - (codebookRow % stepSize);
     const int end   = codebookRow;
@@ -2140,10 +1769,9 @@ void PQ::searchHeapSIMD128Centroids(
 
     constexpr int numCentroid=128;
 
-    const int ksub = lut.rows();       // 子空间距离表的行数
+    const int ksub = lut.rows();    
 
-    // Step 1: 预加载所有子空间的 LUT 数据到寄存器
-    __m256i lut_registers[numSubspaceNum*4]; // 最多支持 16 个子空间
+    __m256i lut_registers[numSubspaceNum*4];
     for (int col = 0; col < 4*numSubspaceNum;) {
         lut_registers[col] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/4) * ksub));
         lut_registers[col + 1] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lut.data() + (col/4) * ksub + 32 ));
@@ -2156,7 +1784,6 @@ void PQ::searchHeapSIMD128Centroids(
     uint8_t* codes = curCodes.data();
 
 
-    // Step 2: 遍历 Codebook 进行搜索
     int stepSize;
     const int codebookRow = curCodes.rows();
 
@@ -2213,7 +1840,7 @@ void PQ::searchHeapSIMD128Centroids(
 
     for (int i = 0; i < codebookRow - codebookRow % stepSize; i += stepSize) {
 
-        __m256i acc = _mm256_setzero_si256(); // 初始化累积距离寄存器
+        __m256i acc = _mm256_setzero_si256();
 
         for (int col = 0; col < numSubspaceNum*4;) {
             if constexpr (std::is_same<TargetDType, uint8_t>::value) {
@@ -2221,15 +1848,9 @@ void PQ::searchHeapSIMD128Centroids(
                 if constexpr (numCentroid == 128) {
                   __m256i code_vector = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(codes + codebookRow*(col/4))); // 32 codes, 8 bits each
 
-                  // bool isPrune = (curPrune) & 1LL;
-                  // curPrune >>= 1; prunePos++;
-                  // if (prunePos == 64) {
-                  //   prunePos = 0;
-                  //   curPrune = *prunePtr++;           // 读下一个 word
-                  // }
-                  // isPrune = true;
 
-                  //if (!isPrune) {
+
+
                   if (true) {
 
                     __m256i indices_low = _mm256_and_si256(code_vector, mask_0); // byte-wise AND, each 1 byte code only get its low 4 bits (0xXY -> 0x0Y)
@@ -2331,16 +1952,15 @@ void PQ::searchHeapSIMD128Centroids(
         }
 
         
-        // Step 4: 比较并更新堆
         
         if(cmp_mask){
           alignas(32) uint8_t temp[32];
           _mm256_store_si256(reinterpret_cast<__m256i*>(temp), acc);
 
           while (cmp_mask) {
-            int j = __builtin_ctz(cmp_mask);   // 找最低位 1
+            int j = __builtin_ctz(cmp_mask); 
             res.push(temp[j], ID{idBias,  idmap[i + j]});
-            cmp_mask &= cmp_mask - 1;                 // 清掉最低位 1
+            cmp_mask &= cmp_mask - 1;           
           }
 
           heap_top = _mm256_set1_epi8(res.worst());
@@ -2351,21 +1971,6 @@ void PQ::searchHeapSIMD128Centroids(
 
     }
 
-    // for(int i = codebookRow - codebookRow % stepSize; i < codebookRow; i++) {
-    //   TargetDType dist = 0;
-    //   const TargetDType * luts = lut.data();
-    //   const int ksub = lut.rows();
-  
-    //   for (int col=0; col < mSubspaceNum; col++) {
-    //     dist = unsigendSaturatedAdd<TargetDType>(dist, luts[*codes++]);
-    //     luts += ksub;
-    //   }
-      
-    //   if (dist < res.worst()) {        
-    //     res.push(dist,  ID{idBias,  idmap[i]});         
-    //   }
-
-    // }
 
     const int start = codebookRow - (codebookRow % stepSize);
     const int end   = codebookRow;
